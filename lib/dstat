@@ -1,0 +1,4 @@
+#!/bin/bash
+#
+# lib/dstat
+# Functions to start and stop dstat

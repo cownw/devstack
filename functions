@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Include the common functions
+FUNC_DIR=$(cd $(dirname "${BASH_SOURCE:-$0}") && pwd)
+source ${FUNC_DIR}/functions-common
+
+function write_devstack_version {
+    cat - <<EOF | sudo tee /etc/devstack-version >/dev/null
+DevStack Version: ${DEVSTACK_SERIES}
+Change: $(git log --format="%H %s %ci" -1)
+OS Version: ${os_VENDOR} ${os_RELEASE} ${os_CODENAME}
+EOF
+}

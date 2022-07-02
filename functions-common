@@ -1,0 +1,199 @@
+#!/bin/bash
+#
+# functions-common - Common functions used by DevStack components
+#
+# The canonical copy of this file is maintained in the DevStack repo.
+# All modifications should be made there and then sync'ed to other repos
+# as required.
+#
+# This file is sorted alphabetically within the function groups.
+#
+# - Config Functions
+# - Control Functions
+# - Distro Functions
+
+function isset {
+    [[ -v "$1" ]]
+}
+
+
+# Control Functions
+# =================
+
+# Prints line number and "message" then exits
+# die $LINENO "message"
+function die {
+    local exitcode=$?
+    set +o xtrace
+    local line=$1; shift
+    if [ $exitcode == 0 ]; then
+        exitcode=1
+    fi
+    backtrace 2
+    err $line "$*"
+    # Give buffers a second to flush
+    sleep 1
+    exit $exitcode
+}
+
+# Prints line number and "message" in error format
+# err $LINENO "message"
+function err {
+    local exitcode=$?
+    local xtrace
+    xtrace=$(set +o | grep xtrace)
+    set +o xtrace
+    local msg="[ERROR] ${BASH_SOURCE[2]}:$1 $2"
+    echo "$msg" 1>&2;
+    if [[ -n ${LOGDIR} ]]; then
+        echo "$msg" >> "${LOGDIR}/error.log"
+    fi
+    $xtrace
+    return $exitcode
+}
+
+declare -g os_VENDOR os_RELEASE os_PACKAGE os_CODENAME
+
+function _ensure_lsb_release {
+    if [[ -x $(command -v lsb_release 2>/dev/null) ]]; then
+        return
+    fi
+
+    if [[ -x $(command -v apt-get 2>/dev/null) ]]; then
+        sudo apt-get install -y lsb-release
+    elif [[ -x $(command -v zypper 2>/dev/null) ]]; then
+        sudo zypper -n install lsb-release
+    elif [[ -x $(command -v dnf 2>/dev/null) ]]; then
+        sudo dnf install -y redhat-lsb-core
+    else
+        die $LINENO "Unable to find or auto-install lsb_release"
+    fi
+}
+
+function GetOSVersion {
+    # CentOS Stream 9 does not provide lsb_release
+    source /etc/os-release
+    if [[ "${ID}${VERSION}" == "centos9" ]]; then
+        os_RELEASE=${VERSION_ID}
+        os_CODENAME="n/a"
+        os_VENDOR=$(echo $NAME | tr -d '[:space:]')
+    else
+        _ensure_lsb_release
+
+        os_RELEASE=$(lsb_release -r -s)
+        os_CODENAME=$(lsb_release -c -s)
+        os_VENDOR=$(lsb_release -i -s)
+    fi
+
+    if [[ $os_VENDOR =~ (Debian|Ubuntu|LinuxMint) ]]; then
+        os_PACKAGE="deb"
+    else
+        os_PACKAGE="rpm"
+    fi
+
+    typeset -xr os_VENDOR
+    typeset -xr os_RELEASE
+    typeset -xr os_PACKAGE
+    typeset -xr os_CODENAME
+}
+
+# Translate the OS version values into common nomenclature
+# Sets global ``DISTRO`` from the ``os_*`` values
+declare -g DISTRO
+
+function GetDistro {
+    GetOSVersion
+    if [[ "$os_VENDOR" =~ (Ubuntu) || "$os_VENDOR" =~ (Debian) || \
+            "$os_VENDOR" =~ (LinuxMint) ]]; then
+        # 'Everyone' refers to Ubuntu / Debian / Mint releases by
+        # the code name adjective
+        DISTRO=$os_CODENAME
+    elif [[ "$os_VENDOR" =~ (Fedora) ]]; then
+        # For Fedora, just use 'f' and the release
+        DISTRO="f$os_RELEASE"
+    elif is_opensuse; then
+        DISTRO="opensuse-$os_RELEASE"
+        # Tumbleweed uses "n/a" as a codename, and the release is a datestring
+        # like 20180218, so not very useful. Leap however uses a release
+        # with a "dot", so for example 15.0
+        [ "$os_CODENAME" = "n/a" -a "$os_RELEASE" = "${os_RELEASE/\./}" ] && \
+            DISTRO="opensuse-tumbleweed"
+    elif is_suse_linux_enterprise; then
+        # just use major release
+        DISTRO="sle${os_RELEASE%.*}"
+    elif [[ "$os_VENDOR" =~ (Red.*Hat) || \
+        "$os_VENDOR" =~ (CentOS) || \
+        "$os_VENDOR" =~ (AlmaLinux) || \
+        "$os_VENDOR" =~ (Scientific) || \
+        "$os_VENDOR" =~ (OracleServer) || \
+        "$os_VENDOR" =~ (Virtuozzo) ]]; then
+        # Drop the . release as we assume it's compatible
+        # XXX re-evaluate when we get RHEL10
+        DISTRO="rhel${os_RELEASE::1}"
+    else
+        # We can't make a good choice here.  Setting a sensible DISTRO
+        # is part of the problem, but not the major issue -- we really
+        # only use DISTRO in the code as a fine-filter.
+        #
+        # The bigger problem is categorising the system into one of
+        # our two big categories as Ubuntu/Debian-ish or
+        # Fedora/CentOS-ish.
+        #
+        # The setting of os_PACKAGE above is only set to "deb" based
+        # on a hard-coded list of vendor names ... thus we will
+        # default to thinking unknown distros are RPM based
+        # (ie. is_ubuntu does not match).  But the platform will then
+        # also not match in is_fedora, because that also has a list of
+        # names.
+        #
+        # So, if you are reading this, getting your distro supported
+        # is really about making sure it matches correctly in these
+        # functions.  Then you can choose a sensible way to construct
+        # DISTRO based on your distros release approach.
+        die $LINENO "Unable to determine DISTRO, can not continue."
+    fi
+    typeset -xr DISTRO
+}
+
+# Utility function for checking machine architecture
+# is_arch arch-type
+function is_arch {
+    [[ "$(uname -m)" == "$1" ]]
+}
+
+# Determine if current distribution is an Oracle distribution
+# is_oraclelinux
+function is_oraclelinux {
+    if [[ -z "$os_VENDOR" ]]; then
+        GetOSVersion
+    fi
+
+    [ "$os_VENDOR" = "OracleServer" ]
+}
+
+
+# Determine if current distribution is an Ubuntu-based distribution
+# It will also detect non-Ubuntu but Debian-based distros
+# is_ubuntu
+function is_ubuntu {
+    if [[ -z "$os_PACKAGE" ]]; then
+        GetOSVersion
+    fi
+    [ "$os_PACKAGE" = "deb" ]
+}
+
+
+
+function update_package_repo {
+    NO_UPDATE_REPOS=${NO_UPDATE_REPOS:-False}
+    REPOS_UPDATED=${REPOS_UPDATED:-False}
+    RETRY_UPDATE=${RETRY_UPDATE:-False}
+
+    if [[ "$NO_UPDATE_REPOS" = "True" ]]; then
+        return 0
+    fi
+}
+
+function export_proxy_variables {
+    if 
+}

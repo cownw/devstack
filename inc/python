@@ -1,0 +1,28 @@
+#!/bin/bash
+#
+# **inc/python** - Python-related functions
+#
+# Support for pip/setuptools interfaces and virtual environments
+#
+# External functions used:
+# - GetOSVersion
+# - is_fedora
+# - is_suse
+# - safe_chown
+
+# Save trace setting
+INC_PY_TRACE=$(set +o | grep xtrace)
+set +o xtrace
+
+function pip_install_gr {
+    local name=$1
+    local clean_name
+    clean_name=$(get_from_global_requirements $name)
+    pip_install $clean_name
+}
+
+function get_from_global_requirements {
+    local package=$1
+    local required_pkg
+    required_pkg=$(grep -i -h ^${package} )
+}

@@ -1,0 +1,6 @@
+#!/bin/bash
+#
+# stackrc
+#
+
+DEVSTACK_SERIES="zed"
