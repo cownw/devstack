@@ -83,3 +83,70 @@ start_dstat
 if is_service_enabled tcpdump; then
     start_tcpdump
 fi
+
+# Database Configuration
+# ----------------------
+
+# To select between database backends, add the following to ``local.conf``:
+#
+#    disable_service mysql
+#    enable_service postgresql
+#
+# The available database backends are listed in ``DATABASE_BACKENDS`` after
+# ``lib/database`` is sourced. ``mysql`` is the default.
+
+if 
+
+if is_service_enabled mysql; then
+
+fi
+
+# Using the cloud
+# ===============
+
+echo ""
+echo ""
+echo ""
+echo "This is your host IP address: $HOST_IP"
+if [ "$HOST_IPV6" != "" ]; then
+    echo "This is your host IPv6 address: $HOST_IPV6"
+fi
+
+# If you installed Horizon on this server you should be able
+# to access the site using your browser.
+if is_service_enabled horizon; then
+    echo "Horizon is now available at http://$SERVICE_HOST$HORIZON_APACHE_ROOT"
+fi
+
+# If Keystone is present you can point ``nova`` cli to this server
+if is_service_enabled keystone; then
+    echo "Keystone is serving at $KEYSTONE_SERVICE_URI/"
+    echo "The default users are: admin and demo"
+    echo "The password: $ADMIN_PASSWORD"
+fi
+
+# Warn that a deprecated feature was used
+if [[ -n "$DEPRECATED_TEXT" ]]; then
+    echo
+    echo -e "WARNING: $DEPRECATED_TEXT"
+    echo
+fi
+
+echo
+echo "Services are running under systemd unit files."
+echo "For more information see: "
+echo "https://docs.openstack.org/devstack/latest/systemd.html"
+echo
+
+# Useful info on current state
+cat /etc/devstack-version
+echo
+
+# Indicate how long this took to run (bash maintained variable ``SECONDS``)
+echo_summary "stack.sh completed in $SECONDS seconds."
+
+# Restore/close logging file descriptors
+exec 1>&3
+exec 2>&3
+exec 3>&-
+exec 6>&-
